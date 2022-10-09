@@ -6,6 +6,7 @@
 #include <chrono>
 #include <string>
 #include "kdtree.h"
+#include <algorithm>
 
 // Arguments:
 // window is the region to draw box around
@@ -75,12 +76,35 @@ void render2DTree(Node* node, pcl::visualization::PCLVisualizer::Ptr& viewer, Bo
 
 }
 
+void clusteringHelper(int idx, const std::vector<std::vector<float>>& points, const KdTree& tree, float distanceTol, std::vector<bool>& processedPoints, std::vector<int>& cluster)
+{
+	cluster.push_back(idx);
+	processedPoints[idx] = true;
+
+	const auto pointsInClusterIdx = tree.search(points[idx], distanceTol);
+
+	// Iterate through nearest points and add to cluster if not yet processed
+	for (const auto& pointIdx : pointsInClusterIdx)
+	{
+		if (!processedPoints[pointIdx])
+			clusteringHelper(pointIdx, points, tree, distanceTol, processedPoints, cluster);
+	}
+}
+
 std::vector<std::vector<int>> euclideanCluster(const std::vector<std::vector<float>>& points, KdTree* tree, float distanceTol)
 {
-
-	// TODO: Fill out this function to return list of indices for each cluster
-
+	// Cluster all points which haven't been processed yet
 	std::vector<std::vector<int>> clusters;
+	std::vector<bool> processedPoints(points.size(), false);
+	for (int iPoint = 0; iPoint < points.size(); iPoint++)
+	{
+		if (!processedPoints[iPoint])
+		{
+			std::vector<int> cluster;
+			clusteringHelper(iPoint, points, *tree, distanceTol, processedPoints, cluster);
+			clusters.push_back(cluster);
+		}		
+	}
  
 	return clusters;
 

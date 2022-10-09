@@ -39,24 +39,24 @@ typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::FilterCloud(ty
     cropBox.filter(*cropBoxFilteredCloud);
 
     // Remove lidar returns from top of car
-    std::vector<int> indices;
-    pcl::CropBox<PointT> roofCropBox(true);
-    // roofCropBox.setMin(Eigen::Vector4f (-1.5, -1.7, -1, 1));
-    // roofCropBox.setMax(Eigen::Vector4f(2.6, 1.7, -4, 1));
-    roofCropBox.setMin(Eigen::Vector4f (-3.0, -3.0, -2, 1));
-    roofCropBox.setMax(Eigen::Vector4f(4.0, 4.0, 4, 1));
-    roofCropBox.setInputCloud(cropBoxFilteredCloud);
-    roofCropBox.filter(indices);
+    // std::vector<int> indices;
+    // pcl::CropBox<PointT> roofCropBox(true);
+    // // roofCropBox.setMin(Eigen::Vector4f (-1.5, -1.7, -1, 1));
+    // // roofCropBox.setMax(Eigen::Vector4f(2.6, 1.7, -4, 1));
+    // roofCropBox.setMin(Eigen::Vector4f (-3.0, -3.0, -2, 1));
+    // roofCropBox.setMax(Eigen::Vector4f(4.0, 4.0, 4, 1));
+    // roofCropBox.setInputCloud(cropBoxFilteredCloud);
+    // roofCropBox.filter(indices);
 
-    pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
-    for (int point : indices)
-        inliers->indices.push_back(point);
+    // pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+    // for (int point : indices)
+    //     inliers->indices.push_back(point);
 
-    pcl::ExtractIndices<PointT> extract;
-    extract.setInputCloud(cropBoxFilteredCloud);
-    extract.setIndices(inliers);
-    extract.setNegative(true);
-    extract.filter(*cropBoxFilteredCloud);
+    // pcl::ExtractIndices<PointT> extract;
+    // extract.setInputCloud(cropBoxFilteredCloud);
+    // extract.setIndices(inliers);
+    // extract.setNegative(true);
+    // extract.filter(*cropBoxFilteredCloud);
 
     auto endTime = std::chrono::steady_clock::now();
     auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
@@ -94,24 +94,13 @@ std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT
     // Time segmentation process
     auto startTime = std::chrono::steady_clock::now();
 
-    // TODO:: Fill in this function to find inliers for the cloud.
-    // pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
+    // Use ransac to determine plane
     pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-    // pcl::SACSegmentation<PointT> seg;
-
-    // seg.setOptimizeCoefficients(true);
-    // seg.setModelType(pcl::SACMODEL_PLANE);
-    // seg.setMethodType(pcl::SAC_RANSAC);
-    // seg.setMaxIterations(maxIterations);
-    // seg.setDistanceThreshold(distanceThreshold);
-
     const auto points = Ransac(cloud, maxIterations, distanceThreshold);
     inliers->indices.reserve(points.size());
     inliers->indices.insert(inliers->indices.begin(), points.begin(), points.end());
 
     // Segment the largest planar component from the remaining cloud
-    // seg.setInputCloud(cloud);
-    // seg.segment(*inliers, *coefficients);
     if (inliers->indices.size() == 0)
     {
         std::cerr << "Could not estimate a planar model for the given dataset." << std::endl;
@@ -134,27 +123,20 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
 
     std::vector<typename pcl::PointCloud<PointT>::Ptr> clusters;
 
-    // Creating the KdTree object for the search method of the extraction
-    // typename pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
-    // tree->setInputCloud(cloud);
-    
-    // pcl::EuclideanClusterExtraction<PointT> ec;
-    // ec.setClusterTolerance(clusterTolerance); // 2cm
-    // ec.setMinClusterSize(minSize);
-    // ec.setMaxClusterSize(maxSize);
-    // ec.setSearchMethod(tree);
-    // ec.setInputCloud(cloud);
-    // ec.extract(clusterIndices);
-
+    // Create KdTree and insert points from cloud
     KdTree3<PointT> tree;
     for (int i = 0; i < cloud->points.size(); i++) 
     	tree.insert(cloud->points.at(i), i); 
-        
+    
+    // Carry out euclidean clustering to determine obstacles
     const auto clusterPoints = euclideanCluster(cloud, tree, clusterTolerance);
-    // std::vector<std::vector<int>> clusterPoints;
     std::vector<pcl::PointIndices> clusterIndices(clusterPoints.size());
     for (const auto& cluster : clusterPoints)
     {
+        const auto clusterSize = cluster.size();
+        if (clusterSize < minSize || clusterSize > maxSize)
+            continue;
+
         pcl::PointIndices indices;
         indices.indices = cluster;
         clusterIndices.emplace_back(indices);

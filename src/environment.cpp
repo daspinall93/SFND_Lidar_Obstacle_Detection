@@ -87,7 +87,7 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointCloud
 
     // Filter image (downsampling and region of interest)
     Eigen::Vector4f minRange(-20.0, -5.0, -10.0, 1.0);
-    Eigen::Vector4f maxRange(20.0, 8.0, 10.0, 1.0);
+    Eigen::Vector4f maxRange(20.0, 7.0, 10.0, 1.0);
     auto filteredCloud = processor.FilterCloud(inputCloud, 0.1, minRange, maxRange);
     // renderPointCloud(viewer,filteredCloud,"filteredCloud");
 
@@ -97,7 +97,7 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointCloud
     renderPointCloud(viewer, segmentCloud.second, "planeCloud", Color(0, 1, 0));
     
     // Cluster obstacle (non ground plane) points
-    auto cloudClusters = processor.Clustering(segmentCloud.first, 1.0, 20, 1000);
+    auto cloudClusters = processor.Clustering(segmentCloud.first, 0.5, 50, 2000);
     int clusterId = 0;
     std::vector<Color> colors = {Color(1, 0, 0), Color(0, 1, 0), Color(0, 0, 1)};
     for (auto cluster : cloudClusters)
@@ -107,7 +107,7 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointCloud
         // renderPointCloud(viewer, cluster, "obstCloud" + std::to_string(clusterId), colors[clusterId]);
 
         Box box = processor.BoundingBox(cluster);
-        // renderBox(viewer, box, clusterId);
+        renderBox(viewer, box, clusterId);
 
         ++clusterId;
     }

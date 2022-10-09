@@ -93,8 +93,8 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointCloud
 
     // Segment
     auto segmentCloud = processor.SegmentPlane(filteredCloud, 100, 0.2);
-    // renderPointCloud(viewer,segmentCloud.first,"obstCloud",Color(1,0,0));
-    // renderPointCloud(viewer, segmentCloud.second, "planeCloud", Color(0, 1, 0));
+    renderPointCloud(viewer,segmentCloud.first,"obstCloud",Color(1,0,0));
+    renderPointCloud(viewer, segmentCloud.second, "planeCloud", Color(0, 1, 0));
     
     // Cluster obstacle (non ground plane) points
     auto cloudClusters = processor.Clustering(segmentCloud.first, 1.0, 20, 1000);
@@ -107,7 +107,7 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointCloud
         // renderPointCloud(viewer, cluster, "obstCloud" + std::to_string(clusterId), colors[clusterId]);
 
         Box box = processor.BoundingBox(cluster);
-        renderBox(viewer, box, clusterId);
+        // renderBox(viewer, box, clusterId);
 
         ++clusterId;
     }
@@ -148,7 +148,7 @@ int main(int argc, char **argv)
     std::cout << "starting enviroment" << std::endl;
 
     pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
-    CameraAngle setAngle = CameraAngle::FPS;
+    CameraAngle setAngle = CameraAngle::TopDown;
     initCamera(setAngle, viewer);
     // simpleHighway(viewer);
 

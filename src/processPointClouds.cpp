@@ -95,19 +95,23 @@ std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT
     auto startTime = std::chrono::steady_clock::now();
 
     // TODO:: Fill in this function to find inliers for the cloud.
-    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
+    // pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
     pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-    pcl::SACSegmentation<PointT> seg;
+    // pcl::SACSegmentation<PointT> seg;
 
-    seg.setOptimizeCoefficients(true);
-    seg.setModelType(pcl::SACMODEL_PLANE);
-    seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setMaxIterations(maxIterations);
-    seg.setDistanceThreshold(distanceThreshold);
+    // seg.setOptimizeCoefficients(true);
+    // seg.setModelType(pcl::SACMODEL_PLANE);
+    // seg.setMethodType(pcl::SAC_RANSAC);
+    // seg.setMaxIterations(maxIterations);
+    // seg.setDistanceThreshold(distanceThreshold);
+
+    const auto points = Ransac(cloud, maxIterations, distanceThreshold);
+    inliers->indices.reserve(points.size());
+    inliers->indices.insert(inliers->indices.begin(), points.begin(), points.end());
 
     // Segment the largest planar component from the remaining cloud
-    seg.setInputCloud(cloud);
-    seg.segment(*inliers, *coefficients);
+    // seg.setInputCloud(cloud);
+    // seg.segment(*inliers, *coefficients);
     if (inliers->indices.size() == 0)
     {
         std::cerr << "Could not estimate a planar model for the given dataset." << std::endl;
@@ -131,17 +135,30 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
     std::vector<typename pcl::PointCloud<PointT>::Ptr> clusters;
 
     // Creating the KdTree object for the search method of the extraction
-    typename pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
-    tree->setInputCloud(cloud);
+    // typename pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+    // tree->setInputCloud(cloud);
+    
+    // pcl::EuclideanClusterExtraction<PointT> ec;
+    // ec.setClusterTolerance(clusterTolerance); // 2cm
+    // ec.setMinClusterSize(minSize);
+    // ec.setMaxClusterSize(maxSize);
+    // ec.setSearchMethod(tree);
+    // ec.setInputCloud(cloud);
+    // ec.extract(clusterIndices);
 
-    std::vector<pcl::PointIndices> clusterIndices;
-    pcl::EuclideanClusterExtraction<PointT> ec;
-    ec.setClusterTolerance(clusterTolerance); // 2cm
-    ec.setMinClusterSize(minSize);
-    ec.setMaxClusterSize(maxSize);
-    ec.setSearchMethod(tree);
-    ec.setInputCloud(cloud);
-    ec.extract(clusterIndices);
+    KdTree3<PointT> tree;
+    for (int i = 0; i < cloud->points.size(); i++) 
+    	tree.insert(cloud->points.at(i), i); 
+        
+    const auto clusterPoints = euclideanCluster(cloud, tree, clusterTolerance);
+    // std::vector<std::vector<int>> clusterPoints;
+    std::vector<pcl::PointIndices> clusterIndices(clusterPoints.size());
+    for (const auto& cluster : clusterPoints)
+    {
+        pcl::PointIndices indices;
+        indices.indices = cluster;
+        clusterIndices.emplace_back(indices);
+    }
 
     // Convert cluster indexes to point clouds
     for (const auto &cluster : clusterIndices)
@@ -216,4 +233,91 @@ std::vector<boost::filesystem::path> ProcessPointClouds<PointT>::streamPcd(std::
     sort(paths.begin(), paths.end());
 
     return paths;
+}
+
+template <typename PointT>
+std::unordered_set<int> ProcessPointClouds<PointT>::Ransac(typename pcl::PointCloud<PointT>::Ptr cloud, int maxIterations, float distanceTol)
+{
+    std::unordered_set<int> inliersResult;
+	srand(time(NULL));
+
+	for (int i = 0; i < maxIterations; i++)
+	{		
+		// Select to random points
+		std::unordered_set<int> inliers;
+		while(inliers.size() < 3)
+			inliers.insert(rand() % cloud->points.size());
+
+		// Calculate the line 
+		auto itr = inliers.begin();
+		const auto x1 = cloud->points.at(*itr).x;
+		const auto y1 = cloud->points.at(*itr).y;
+		const auto z1 = cloud->points.at(*itr).z;
+		itr++;
+		const auto x2 = cloud->points.at(*itr).x;
+		const auto y2 = cloud->points.at(*itr).y;
+		const auto z2 = cloud->points.at(*itr).z;
+		itr++;
+		const auto x3 = cloud->points.at(*itr).x;
+		const auto y3 = cloud->points.at(*itr).y;
+		const auto z3 = cloud->points.at(*itr).z;
+
+		const auto A = (y2-y1) * (z3-z1) - (z2-z1) * (y3-y1);
+		const auto B = (z2-z1) * (x3-x1) - (x2-x1) * (z3-z1);
+		const auto C = (x2-x1) * (y3-y1) - (y2-y1) * (x3-x1);
+		const auto D = -(A * x1 + B * y1 + C * z1);
+		const auto E = sqrt(A * A + B * B + C * C);		
+
+		// Find inliers and outliers
+		for (int idx = 0; idx < cloud->points.size(); idx++)
+		{
+			const auto point = cloud->points.at(idx);
+
+			// Determine inliers
+			const auto distance = fabs(A * point.x + B * point.y + C * point.z + D) / E;
+			if (distance < distanceTol)
+				inliers.insert(idx);
+		}
+
+		if (inliers.size() > inliersResult.size())
+			inliersResult = inliers;
+
+	}
+
+	return inliersResult;
+}
+
+template <typename PointT>
+std::vector<std::vector<int>> ProcessPointClouds<PointT>::euclideanCluster(typename pcl::PointCloud<PointT>::Ptr cloud, const KdTree3<PointT>& tree, float distanceTol)
+{
+	// Cluster all points which haven't been processed yet
+	std::vector<std::vector<int>> clusters;
+	std::vector<bool> processedPoints(cloud->points.size(), false);
+	for (int iPoint = 0; iPoint < cloud->points.size(); iPoint++)
+	{
+		if (!processedPoints[iPoint])
+		{
+			std::vector<int> cluster;
+			clusteringHelper(iPoint, cloud, tree, distanceTol, processedPoints, cluster);
+			clusters.push_back(cluster);
+		}		
+	}
+ 
+	return clusters;
+}
+
+template <typename PointT>
+void ProcessPointClouds<PointT>::clusteringHelper(int idx, typename pcl::PointCloud<PointT>::Ptr cloud, const KdTree3<PointT>& tree, float distanceTol, std::vector<bool>& processedPoints, std::vector<int>& cluster)
+{
+    cluster.push_back(idx);
+	processedPoints[idx] = true;
+
+	const auto pointsInClusterIdx = tree.search(cloud->points[idx], distanceTol);
+
+	// Iterate through nearest points and add to cluster if not yet processed
+	for (const auto& pointIdx : pointsInClusterIdx)
+	{
+		if (!processedPoints[pointIdx])
+			clusteringHelper(pointIdx, cloud, tree, distanceTol, processedPoints, cluster);
+	}
 }
